@@ -12,7 +12,7 @@ from .surgical_dataset import SurgicalDataset, SurgicalDatasetChunks
 from . import utils as utils
 from .build import DATASET_REGISTRY
 import random
-
+# 获取日志记录器
 logger = logging.getLogger(__name__)
 
 
@@ -21,7 +21,7 @@ class Grasp(SurgicalDataset):
     """
     PSI-AVA dataloader.
     """
-
+（专门用于抓取动作识别）
     def __init__(self, cfg, split):
         self.dataset_name = "grasp"
         self.zero_fill = 9
@@ -59,7 +59,7 @@ class Grasp(SurgicalDataset):
                 "ori_boxes" and "metadata".
         """
 
-        # Get the path of the middle frame 
+        # Get the path of the middle frame 获取关键帧信息
         video_idx, sec_idx, sec, center_idx = self._keyframe_indices[idx]
         video_name = self._video_idx_to_name[video_idx]
         complete_name = '{}/{}.{}'.format(video_name, str(sec).zfill(self.zero_fill), self.image_type)
@@ -73,40 +73,40 @@ class Grasp(SurgicalDataset):
         assert found_idx == center_idx, f'Different indexes {found_idx} & {center_idx}'
         assert int(self._image_paths[video_idx][center_idx].split('/')[-1].replace('.'+self.image_type,''))==sec, f'Different {self._image_paths[video_idx][center_idx].split("/")[-1].replace("."+self.image_type,"")} {sec}'
 
-        # Get the frame idxs for current clip.
+        # Get the frame idxs for current clip. 生成帧序列索引
         seq = utils.get_sequence(
             center_idx,
-            self._seq_len // 2,
-            self._sample_rate,
+            self._seq_len // 2, # 中心向两边扩展
+            self._sample_rate, # 采样间隔
             num_frames=len(self._image_paths[video_idx]),
             length=self._video_length
         )
 
         assert center_idx in seq, f'Center index {center_idx} not in sequence {seq}'
+        # 加载标签
         clip_label_list = deepcopy(self._keyframe_boxes_and_labels[video_idx][sec_idx])
         assert len(clip_label_list) > 0
 
-        # Add labels depending on the task
+        # Add labels depending on the task 初始化标签字典
         all_labels = {task:[] for task in self._region_tasks}
-
+        # 处理帧级标签（所有标注一致）
         for task in self._frame_tasks:
             assert all(label[task]==clip_label_list[0][task] for label in clip_label_list), f'Inconsistent {task} labels for frame {complete_name}: {[label[task] for label in clip_label_list]}'
             all_labels[task] = clip_label_list[0][task]
 
         extra_data = {}
                 
-        # Load images of current clip.
+        # Load images of current clip. 加载图像并预处理
         image_paths = [self._image_paths[video_idx][frame] for frame in seq]
-        imgs = utils.retry_load_images(
-            image_paths, backend=self.cfg.ENDOVIS_DATASET.IMG_PROC_BACKEND
+        imgs = utils.retry_load_images(image_paths, backend=self.cfg.ENDOVIS_DATASET.IMG_PROC_BACKEND
         )
         
         # Preprocess images and boxes
         imgs = self._images_and_boxes_preprocessing_cv2(
             imgs
-        )
+        ) # opencv预处理
         
-        imgs = utils.pack_pathway_output(self.cfg, imgs)
+        imgs = utils.pack_pathway_output(self.cfg, imgs) # 多路径特征处理
 
         if self.cfg.NUM_GPUS>1:
             video_num = int(video_name.replace('CASE',''))
@@ -122,14 +122,14 @@ class Graspms(SurgicalDataset):
     """
     Grasp ultisequence dataloader.
     """
-
+    # 多尺度采样的grasp数据集
     def __init__(self, cfg, split):
         
         self.dataset_name = "graspms"
         self.zero_fill = 9
         self.image_type = "jpg"
         self.fps_videos = {'CASE021','CASE041','CASE047','CASE050','CASE051','CASE053'}
-        self.multi_sample_rate = cfg.DATA.MULTI_SAMPLING_RATE
+        self.multi_sample_rate = cfg.DATA.MULTI_SAMPLING_RATE # 不同采样率配置
         self.sampling_rate_augmentation = False
         super().__init__(cfg,split)
         if self._split == "train" and cfg.DATA.MULTI_SAMPLING_RATE_AUGMENTATION:
@@ -179,7 +179,7 @@ class Graspms(SurgicalDataset):
         assert found_idx == center_idx, f'Different indexes {found_idx} & {center_idx}'
         assert int(self._image_paths[video_idx][center_idx].split('/')[-1].replace('.'+self.image_type,''))==sec, f'Different {self._image_paths[video_idx][center_idx].split("/")[-1].replace("."+self.image_type,"")} {sec}'
 
-        sequence_pyramid = []
+        sequence_pyramid = [] # 生成多尺度序列金字塔
 
         sample_rate_set = self.multi_sample_rate
 
@@ -198,7 +198,7 @@ class Graspms(SurgicalDataset):
 
         assert center_idx in seq, f'Center index {center_idx} not in sequence {seq}'
 
-        # Get the frame idxs for current clip.
+        # Get the frame idxs for current clip. 并行处理多尺度序列
         images_pyramid = utils.process_sequences_parallel(
             sequence_pyramid,
             video_idx,
